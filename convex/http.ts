@@ -1,6 +1,12 @@
 import { Webhook } from "svix";
 import { anyApi, httpActionGeneric, httpRouter } from "convex/server";
 
+const ORG_ROLE_MAP: Record<string, "partner" | "borrower" | "admin"> = {
+  "org:admin": "admin",
+  "org:partner": "partner",
+  "org:borrower": "borrower",
+};
+
 const http = httpRouter();
 
 http.route({
@@ -36,6 +42,7 @@ http.route({
     const type = event.type as string;
     const data = event.data as Record<string, unknown>;
 
+    // ─── User lifecycle events ───────────────────────────────────────
     if (type === "user.deleted") {
       const clerkId = data.id as string;
       await ctx.runMutation(anyApi.users.deleteFromClerk, { clerkId });
@@ -48,15 +55,46 @@ http.route({
         ?.email_address;
       const firstName = (data.first_name as string | undefined) ?? "";
       const lastName = (data.last_name as string | undefined) ?? "";
-      const role = (data.public_metadata as { role?: "partner" | "borrower" | "admin" } | undefined)
-        ?.role;
 
       await ctx.runMutation(anyApi.users.upsertFromClerk, {
         clerkId,
         email: emailAddress ?? "",
         name: `${firstName} ${lastName}`.trim(),
-        role,
       });
+      return new Response("ok", { status: 200 });
+    }
+
+    // ─── Organization membership events ──────────────────────────────
+    if (
+      type === "organizationMembership.created" ||
+      type === "organizationMembership.updated"
+    ) {
+      const publicUserData = data.public_user_data as { user_id?: string } | undefined;
+      const clerkId = publicUserData?.user_id;
+      const orgRole = data.role as string | undefined;
+
+      if (clerkId && orgRole) {
+        const appRole = ORG_ROLE_MAP[orgRole];
+        if (appRole) {
+          await ctx.runMutation(anyApi.users.updateRole, {
+            clerkId,
+            role: appRole,
+          });
+        }
+      }
+      return new Response("ok", { status: 200 });
+    }
+
+    if (type === "organizationMembership.deleted") {
+      // When a user is removed from the org, clear their role
+      const publicUserData = data.public_user_data as { user_id?: string } | undefined;
+      const clerkId = publicUserData?.user_id;
+      if (clerkId) {
+        await ctx.runMutation(anyApi.users.updateRole, {
+          clerkId,
+          role: undefined,
+        });
+      }
       return new Response("ok", { status: 200 });
     }
 

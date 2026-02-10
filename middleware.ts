@@ -11,21 +11,21 @@ export default clerkMiddleware(async (auth, req) => {
     await auth.protect();
   }
 
-  const { sessionClaims, userId } = await auth();
-  const role = (sessionClaims?.metadata as { role?: string } | undefined)?.role;
+  const { orgRole, orgId, userId } = await auth();
 
-  // Signed-in user without a role trying to access a dashboard → pick a role first
-  if (isDashboardRoute(req) && userId && !role) {
+  // Signed-in user without an active org → they need to be invited to one
+  if (isDashboardRoute(req) && userId && !orgId) {
     return NextResponse.redirect(new URL("/select-role", req.url));
   }
 
-  if (isPartnerRoute(req) && role !== "partner" && role !== "admin") {
+  // Enforce role-based route access
+  if (isAdminRoute(req) && orgRole !== "org:admin") {
     return NextResponse.redirect(new URL("/", req.url));
   }
-  if (isBorrowerRoute(req) && role !== "borrower" && role !== "admin") {
+  if (isPartnerRoute(req) && orgRole !== "org:partner" && orgRole !== "org:admin") {
     return NextResponse.redirect(new URL("/", req.url));
   }
-  if (isAdminRoute(req) && role !== "admin") {
+  if (isBorrowerRoute(req) && orgRole !== "org:borrower" && orgRole !== "org:admin") {
     return NextResponse.redirect(new URL("/", req.url));
   }
 

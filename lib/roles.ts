@@ -1,14 +1,33 @@
 import type { UserRole } from "@/lib/constants";
 
-export function getRoleFromClaims(metadata: unknown): UserRole | null {
-  if (typeof metadata !== "object" || metadata === null) return null;
-  const role = (metadata as { role?: string }).role;
-  if (role === "partner" || role === "borrower" || role === "admin") {
-    return role;
-  }
-  return null;
+/**
+ * Maps a Clerk org role string (e.g. "org:admin") to our app-level role.
+ */
+const ORG_ROLE_MAP: Record<string, UserRole> = {
+  "org:admin": "admin",
+  "org:partner": "partner",
+  "org:borrower": "borrower",
+};
+
+export function getAppRole(orgRole: string | undefined | null): UserRole | null {
+  if (!orgRole) return null;
+  return ORG_ROLE_MAP[orgRole] ?? null;
 }
 
-export function hasRole(role: UserRole | null, expected: UserRole): boolean {
-  return role === expected;
+export function hasRole(orgRole: string | undefined | null, expected: UserRole): boolean {
+  return getAppRole(orgRole) === expected;
+}
+
+export function getDashboardPath(orgRole: string | undefined | null): string {
+  const role = getAppRole(orgRole);
+  switch (role) {
+    case "admin":
+      return "/admin";
+    case "partner":
+      return "/partner";
+    case "borrower":
+      return "/borrower";
+    default:
+      return "/";
+  }
 }
